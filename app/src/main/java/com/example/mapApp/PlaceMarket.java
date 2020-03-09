@@ -6,7 +6,6 @@ public class PlaceMarket implements Serializable {
     private double lat;
     private double lng;
 
-
     public PlaceMarket(double lat, double lng) {
         this.lat = lat;
         this.lng = lng;

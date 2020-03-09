@@ -1,6 +1,5 @@
 package com.example.mapApp;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
@@ -8,7 +7,6 @@ import android.graphics.Color;
 import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationListener;
-import android.location.LocationManager;
 import android.os.Bundle;
 
 import android.util.Log;
@@ -16,8 +14,11 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -35,14 +36,17 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
+import com.google.android.gms.maps.model.CustomCap;
 import com.google.android.gms.maps.model.Dot;
 import com.google.android.gms.maps.model.Gap;
+import com.google.android.gms.maps.model.JointType;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PatternItem;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
+import com.google.android.gms.maps.model.RoundCap;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 
@@ -60,6 +64,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
+import static com.google.android.gms.maps.GoogleMap.MAP_TYPE_HYBRID;
+import static com.google.android.gms.maps.GoogleMap.MAP_TYPE_NONE;
+import static com.google.android.gms.maps.GoogleMap.MAP_TYPE_NORMAL;
+import static com.google.android.gms.maps.GoogleMap.MAP_TYPE_SATELLITE;
+import static com.google.android.gms.maps.GoogleMap.MAP_TYPE_TERRAIN;
+
 /**aq
  * An activity that displays a map showing the place at the device's current location.
  */
@@ -67,7 +77,7 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
         implements OnMapReadyCallback,
         LocationListener,
         GoogleMap.OnMapLongClickListener,
-        GoogleMap.OnMarkerClickListener {
+        GoogleMap.OnMarkerClickListener{
 
     private static final String TAG = MapsActivityCurrentPlace.class.getSimpleName();
 
@@ -98,10 +108,10 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
     private List[] mLikelyPlaceAttributions;
     private LatLng[] mLikelyPlaceLatLngs;
 
-    private Marker miUbicacion;
+    private Marker currentPlace;
     private TextView site;
     private List<Marker> markers;
-    private Polyline rastro;
+    private Polyline polyline;
 
     private ArrayList<PlaceMarket> places;
 
@@ -134,10 +144,7 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
-        ActivityCompat.requestPermissions(this, new String[]{
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
-        }, 11);
+        getLocationPermission();
 
         site = findViewById(R.id.siteTxt);
         site.setTextColor(Color.RED);
@@ -186,17 +193,11 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
     public void onMapReady(GoogleMap map) {
         mMap = map;
 
-
-
-        //Solicitud de Ubicacion
-        LocationManager manager = (LocationManager) getSystemService(LOCATION_SERVICE);
-        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, this);
-
         mMap.setOnMapLongClickListener(this);
         mMap.setOnMarkerClickListener(this);
         List<PatternItem> pattern = Arrays.<PatternItem>asList(
                 new Dot(), new Gap(10));
-        rastro=mMap.addPolyline(new PolylineOptions().color(Color.BLUE).clickable(false).pattern(pattern).visible(true));
+        polyline =mMap.addPolyline(new PolylineOptions().color(Color.BLUE).clickable(false).pattern(pattern).visible(true));
 
         // Use a custom info window adapter to handle multiple lines of text in the
         // info window contents.
@@ -232,6 +233,7 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
 
         // Get the current location of the device and set the position of the map.
         getDeviceLocation();
+
     }
 
     /**
@@ -256,11 +258,11 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
                                         new LatLng(mLastKnownLocation.getLatitude(),
                                                 mLastKnownLocation.getLongitude()), DEFAULT_ZOOM));
 
-                                //Marcador en la posición actual
+                                //Current position
                                 LatLng base = new LatLng(mLastKnownLocation.getLatitude(), mLastKnownLocation.getLongitude());
-                                miUbicacion = mMap.addMarker(new MarkerOptions().position(base).title("Posición Actual"));
-                                miUbicacion.setIcon((BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
-
+                                currentPlace = mMap.addMarker(new MarkerOptions().position(base).title("Posición Actual"));
+                                currentPlace.setIcon((BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+                                buildWay(base);
                             }
                         } else {
                             Log.d(TAG, "Current location is null. Using defaults.");
@@ -275,6 +277,20 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
         } catch (SecurityException e)  {
             Log.e("Exception: %s", e.getMessage());
         }
+    }
+
+    /**
+     * Build a way
+     * */
+    private void buildWay(LatLng way){
+        polyline = mMap.addPolyline(new PolylineOptions().clickable(true).add(way));
+        polyline.setStartCap(new CustomCap(BitmapDescriptorFactory.fromResource(R.drawable.ic_arrow), 10));
+        polyline.setEndCap(new RoundCap());
+        polyline.setEndCap(new RoundCap());
+        polyline.setWidth(12);
+        polyline.setColor(0xff000000);
+        polyline.setJointType(JointType.ROUND);
+
     }
 
 
@@ -469,7 +485,6 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         double distance = R * c * 1000; // convert to meters
 
-
         distance = Math.pow(distance, 2);
 
         return Math.sqrt(distance);
@@ -480,9 +495,9 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
         String nom = "";
         for (Marker mark : markers) {
             double distance = calculateDistance(mark.getPosition().latitude,
-                    miUbicacion.getPosition().latitude,
+                    currentPlace.getPosition().latitude,
                     mark.getPosition().longitude,
-                    miUbicacion.getPosition().longitude);
+                    currentPlace.getPosition().longitude);
             if (distance < min) {
                 min = distance;
                 nom = mark.getTitle();
@@ -499,15 +514,14 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
 
     }
 
-
     @Override
     public void onLocationChanged(Location location) {
         LatLng pos = new LatLng(location.getLatitude(), location.getLongitude());
-        miUbicacion.setPosition(pos);
+        currentPlace.setPosition(pos);
         mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(pos, 15));
-        List<LatLng> points = rastro.getPoints();
+        List<LatLng> points = polyline.getPoints();
         points.add(pos);
-        rastro.setPoints(points);
+        polyline.setPoints(points);
         updateTextDistance();
     }
 
@@ -530,7 +544,7 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
     public void onMapLongClick(final LatLng latLng) {
         LayoutInflater layoutInflater = getLayoutInflater();
 
-        final View view = layoutInflater.inflate(R.layout.fragment_input, null);
+        final View view = layoutInflater.inflate(R.layout.fragment_market, null);
         final android.app.AlertDialog alertDialog = new android.app.AlertDialog.Builder(this).create();
         alertDialog.setMessage("Nombre del marcador");
         alertDialog.setCancelable(false);
@@ -544,7 +558,7 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
                 MarkerOptions mo = new MarkerOptions().position(latLng).title(editText.getText().toString());
                 Marker m = mMap.addMarker(mo);
                 markers.add(m);
-                
+
                 PlaceMarket place = new PlaceMarket(latLng.latitude, latLng.longitude);
                 places.add(place);
 
@@ -563,17 +577,17 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
 
     @Override
     public boolean onMarkerClick(Marker marker) {
-        if (!marker.equals(miUbicacion)) {
+        if (!marker.equals(currentPlace)) {
             Toast.makeText(this, " Usted está a: " +
                     calculateDistance(marker.getPosition().latitude,
-                            miUbicacion.getPosition().latitude,
+                            currentPlace.getPosition().latitude,
                             marker.getPosition().longitude,
-                            miUbicacion.getPosition().longitude) + "de: " + marker.getTitle() , Toast.LENGTH_SHORT).show();
+                            currentPlace.getPosition().longitude) + "de: " + marker.getTitle() , Toast.LENGTH_SHORT).show();
         } else {
             Geocoder geo = new Geocoder(this, Locale.getDefault());
             String dir = "";
             try {
-                dir = geo.getFromLocation(miUbicacion.getPosition().latitude, miUbicacion.getPosition().longitude, 1).get(0).getAddressLine(0);
+                dir = geo.getFromLocation(currentPlace.getPosition().latitude, currentPlace.getPosition().longitude, 1).get(0).getAddressLine(0);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -581,5 +595,6 @@ public class MapsActivityCurrentPlace extends AppCompatActivity
         }
         return false;
     }
+
 }
 
